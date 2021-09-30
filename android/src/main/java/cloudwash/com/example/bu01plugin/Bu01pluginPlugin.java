@@ -7,9 +7,11 @@ import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.os.Build;
 import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
 import android.os.Handler;
+import android.util.Log;
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.plugin.common.BinaryMessenger;
@@ -32,18 +34,22 @@ import java.util.concurrent.TimeUnit;
 
 /** Bu01pluginPlugin */
 public class Bu01pluginPlugin implements FlutterPlugin, MethodCallHandler {
+  private static final String TAG = "BU01Plugin";
 
   private Context applicationContext;
   private MethodChannel method_channel;
-  private EventChannel event_channel;
+  private EventChannel tag_channel;
+  private EventChannel device_channel;
 
   private BU01_Service mService;
   private BU01_Reader mReader;
 
   private BU01_Reader.SingleInventoryCallback tagDetectCallback;
+  private BU01_Service.Callback deviceDetectCallback;
 
   String sn;
   ArrayList<String> tagArray = new ArrayList<>();
+  ArrayList<String> deviceArray = new ArrayList<>();
   int counter = 0;
 
   public static int readerStatus;
@@ -58,8 +64,8 @@ public class Bu01pluginPlugin implements FlutterPlugin, MethodCallHandler {
     method_channel = new MethodChannel(messenger, "bu01plugin");
     method_channel.setMethodCallHandler(this);
 
-    event_channel = new EventChannel(messenger, "tag_channel");
-    event_channel.setStreamHandler(new EventChannel.StreamHandler() {
+    tag_channel = new EventChannel(messenger, "tag_channel");
+    tag_channel.setStreamHandler(new EventChannel.StreamHandler() {
       @Override
       public void onListen(Object arguments, final EventChannel.EventSink events) {
         tagDetectCallback = new BU01_Reader.SingleInventoryCallback() {
@@ -82,6 +88,35 @@ public class Bu01pluginPlugin implements FlutterPlugin, MethodCallHandler {
 
       }
     });
+
+    // device_channel = new EventChannel(messenger, "device_channel");
+    // device_channel.setStreamHandler(new EventChannel.StreamHandler() {
+    //   @Override
+    //   public void onListen(Object arguments, final EventChannel.EventSink events) {
+    //     deviceDetectCallback = new BU01_Service.Callback() {
+    //       @Override
+    //       public void onDiscoverBleReader(BU01_Reader reader) {
+    //         Log.d("TAG", "new device detected");
+    //       }
+    //     };
+    //   }
+
+    //   @Override
+    //   public void onCancel(Object arguments) {
+
+    //   }
+    // });
+    
+    deviceDetectCallback = new BU01_Service.Callback() {
+      @Override
+      public void onDiscoverBleReader(BU01_Reader reader) {
+        Log.d("TAG", "new device detected");
+      }
+    };
+
+    mService = BU01_Factory.bu01(this.applicationContext, reader -> {
+      Log.d(TAG, "DEVICE DETECTED!!!!");
+    });
   }
 
   @Override
@@ -96,8 +131,11 @@ public class Bu01pluginPlugin implements FlutterPlugin, MethodCallHandler {
     method_channel.setMethodCallHandler(null);
     method_channel = null;
 
-    event_channel.setStreamHandler(null);
-    event_channel = null;
+    tag_channel.setStreamHandler(null);
+    tag_channel = null;
+
+    // device_channel.setStreamHandler(null);
+    // device_channel = null;
   }
 
   private void handleMethods(@NonNull MethodCall call, @NonNull Result result) {
@@ -113,10 +151,29 @@ public class Bu01pluginPlugin implements FlutterPlugin, MethodCallHandler {
         result.success(bulkScan());
         break;
 
+      case "startDeviceSearch":
+        result.success(startDeviceSearch());
+        break;
+
+      case "stopDeviceSearch":
+        result.success(stopDeviceSearch());
+        break;
 
       default:
         result.notImplemented();
     }
+  }
+
+  private boolean startDeviceSearch() {
+    mService.scanForBU01BleReader();
+    Log.d("TAG", "searching for BU01 readers....");
+    // mService.scanForBle();
+    return true;
+  }
+
+  private boolean stopDeviceSearch() {
+    mService.stopScan();
+    return true;
   }
 
   private boolean connectToReader(String readerAddress) {
